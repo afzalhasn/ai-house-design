@@ -9,7 +9,7 @@ import { ImageHistoryItem, LoadingState } from '@/types';
 
 const INITIAL_PROMPT = "Ultra-realistic modern luxury house exterior, contemporary architecture, clean sharp lines, large glass windows, natural stone and wood materials, warm ambient lighting, landscaped garden, green lawn, clear blue sky, cinematic wide-angle shot, front elevation view, symmetrical composition, realistic shadows, high detail, photorealistic, 8k quality. Camera: static, eye-level, wide lens. Environment: suburban residential area, empty surroundings, no people, no vehicles. Style: architectural visualization, realistic daylight";
 
-const ASPECT_RATIOS = ["16:9", "4:3", "1:1"];
+const ASPECT_RATIOS = ["16:9", "4:3", "1:1", "9:16"];
 
 const ARCHITECTURAL_KEYWORDS = [
   'Modern', 'Minimalist', 'Industrial', 'Brutalist', 'Victorian', 'Gothic', 'Art Deco', 'Scandinavian',
@@ -297,19 +297,20 @@ export default function Home() {
       case '16:9': return 'aspect-video';
       case '4:3': return 'aspect-[4/3]';
       case '1:1': return 'aspect-square';
+      case '9:16': return 'aspect-[9/16]';
       default: return 'aspect-video';
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0a]">
+    <div className="min-h-screen flex flex-col bg-[var(--background)] transition-colors duration-300">
       <Header onGalleryClick={() => setActiveTab('gallery')} />
 
       <main className="flex-1 container mx-auto px-4 md:px-8 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Section: Main Preview */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           <div className="relative group flex justify-center">
-            <div className={`w-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center relative shadow-2xl transition-all duration-500 ${getAspectRatioClass(aspectRatio)}`}>
+            <div className={`w-full max-h-[75vh] rounded-2xl overflow-hidden glass-panel flex items-center justify-center relative shadow-2xl transition-all duration-500 ${getAspectRatioClass(aspectRatio)}`}>
               {loadingState !== LoadingState.IDLE && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
                   <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4"></div>
@@ -365,7 +366,7 @@ export default function Home() {
               <button
                 key={preset}
                 onClick={() => { setPrompt(preset); }}
-                className="px-4 py-1.5 text-xs font-medium bg-zinc-900 border border-zinc-800 rounded-full hover:bg-zinc-800 hover:border-zinc-700 transition-all text-zinc-400 hover:text-zinc-200 disabled:opacity-30"
+                className="px-4 py-1.5 text-xs font-medium bg-[var(--card-bg)] border border-[var(--card-border)] rounded-full hover:border-[var(--accent)] transition-all text-zinc-500 hover:text-[var(--foreground)] disabled:opacity-30"
               >
                 {preset}
               </button>
@@ -381,19 +382,19 @@ export default function Home() {
                 value={prompt}
                 onChange={handleInputChange}
                 placeholder="Describe your architectural changes..."
-                className="w-full bg-zinc-900 border border-zinc-800 focus:border-white focus:ring-1 focus:ring-white rounded-xl py-5 pl-6 pr-40 outline-none transition-all text-lg placeholder:text-zinc-600 shadow-xl disabled:opacity-50"
+                className="w-full bg-[var(--card-bg)] border border-[var(--card-border)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] rounded-xl py-5 pl-6 pr-40 outline-none transition-all text-lg placeholder:text-zinc-500 shadow-xl disabled:opacity-50 text-[var(--foreground)]"
                 disabled={loadingState !== LoadingState.IDLE}
                 autoComplete="off"
               />
 
               {autocompleteSuggestions.length > 0 && (
-                <div className="absolute bottom-full left-6 mb-2 bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[200px] z-50">
+                <div className="absolute bottom-full left-6 mb-2 bg-[var(--glass-bg)] border border-[var(--card-border)] rounded-xl shadow-2xl overflow-hidden min-w-[200px] z-50 backdrop-blur-xl">
                   {autocompleteSuggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => applyAutocomplete(suggestion)}
-                      className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"
+                      className="w-full text-left px-4 py-2 text-sm text-zinc-500 hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)] transition-colors"
                     >
                       {suggestion}
                     </button>
@@ -406,7 +407,7 @@ export default function Home() {
                   type="button"
                   onClick={handleGenerateAiSuggestions}
                   disabled={isLoadingSuggestions || loadingState !== LoadingState.IDLE}
-                  className="p-2.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                  className="p-2.5 text-zinc-500 hover:text-[var(--foreground)] hover:bg-[var(--card-bg)] rounded-lg transition-all"
                 >
                   {isLoadingSuggestions ? (
                     <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -433,10 +434,10 @@ export default function Home() {
           </form>
 
           {isAiSuggestionsOpen && (
-            <div className="glass-panel p-6 rounded-2xl animate-in fade-in slide-in-from-bottom-4 bg-zinc-900/90 border-zinc-700">
+            <div className="glass-panel p-6 rounded-2xl animate-in fade-in slide-in-from-bottom-4 shadow-2xl">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">AI Generated Ideas</h3>
-                <button onClick={() => setIsAiSuggestionsOpen(false)} className="text-zinc-500 hover:text-white">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2">AI Generated Ideas</h3>
+                <button onClick={() => setIsAiSuggestionsOpen(false)} className="text-zinc-400 hover:text-[var(--foreground)]">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
               </div>
@@ -445,7 +446,7 @@ export default function Home() {
                   <button
                     key={i}
                     onClick={() => handleSelectAiPrompt(s)}
-                    className="text-left p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-purple-500/50 transition-all text-xs text-zinc-300 group"
+                    className="text-left p-3 rounded-xl bg-[var(--card-bg)] border border-[var(--card-border)] hover:border-[var(--accent)] transition-all text-xs text-zinc-500 hover:text-[var(--foreground)] group"
                   >
                     {s}
                   </button>
@@ -462,14 +463,14 @@ export default function Home() {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-zinc-500 mb-2 block uppercase">Aspect Ratio</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {ASPECT_RATIOS.map((ratio) => (
                     <button
                       key={ratio}
                       onClick={() => handleAspectRatioChange(ratio)}
                       className={`px-2 py-2 text-xs font-medium rounded-lg border transition-all ${aspectRatio === ratio
-                        ? 'bg-white text-black border-white'
-                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-zinc-200'
+                        ? 'bg-[var(--foreground)] text-[var(--background)] border-[var(--foreground)]'
+                        : 'bg-[var(--card-bg)] text-zinc-500 border-[var(--card-border)] hover:border-[var(--accent)]'
                         }`}
                     >
                       {ratio}
@@ -497,17 +498,17 @@ export default function Home() {
                 </Button>
               </div>
 
-              <label className="flex items-center gap-3 p-3 rounded-lg border border-zinc-800 hover:bg-zinc-800/50 cursor-pointer transition-colors">
-                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${saveToDriveEnabled ? 'bg-blue-600 border-blue-600' : 'border-zinc-600 bg-transparent'}`}>
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-[var(--card-border)] hover:bg-[var(--card-bg)] cursor-pointer transition-colors">
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${saveToDriveEnabled ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-zinc-400 bg-transparent'}`}>
                   {saveToDriveEnabled && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
                 </div>
                 <input type="checkbox" className="hidden" checked={saveToDriveEnabled} onChange={(e) => setSaveToDriveEnabled(e.target.checked)} />
-                <span className="text-xs text-zinc-400">Sync to Google Drive</span>
+                <span className="text-xs text-zinc-500">Sync to Google Drive</span>
               </label>
 
               <Button
                 variant="ghost"
-                className="w-full !justify-start text-xs !py-2 border border-dashed border-zinc-800"
+                className="w-full !justify-start text-xs !py-2 border border-dashed border-[var(--card-border)]"
                 onClick={handleReset}
               >
                 Regenerate Original Base
@@ -515,11 +516,11 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col gap-4 overflow-hidden bg-zinc-900/30 rounded-2xl border border-white/5 p-4">
-            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl">
-              <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'history' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>History ({history.length})</button>
-              <button onClick={() => setActiveTab('gallery')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'gallery' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>Gallery ({gallery.length})</button>
-              <button onClick={() => setActiveTab('drive')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'drive' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>Cloud ({driveFiles.length})</button>
+          <div className="flex-1 flex flex-col gap-4 overflow-hidden glass-panel p-4 rounded-2xl">
+            <div className="flex items-center gap-1 bg-[var(--card-bg)] p-1 rounded-xl">
+              <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'history' ? 'bg-[var(--background)] text-[var(--foreground)] shadow' : 'text-zinc-500 hover:text-[var(--foreground)]'}`}>History ({history.length})</button>
+              <button onClick={() => setActiveTab('gallery')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'gallery' ? 'bg-[var(--background)] text-[var(--foreground)] shadow' : 'text-zinc-500 hover:text-[var(--foreground)]'}`}>Gallery ({gallery.length})</button>
+              <button onClick={() => setActiveTab('drive')} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${activeTab === 'drive' ? 'bg-[var(--background)] text-[var(--foreground)] shadow' : 'text-zinc-500 hover:text-[var(--foreground)]'}`}>Cloud ({driveFiles.length})</button>
             </div>
 
             <div className="flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
@@ -533,10 +534,10 @@ export default function Home() {
                   key={item.id}
                   onClick={() => restoreFromItem(item)}
                   className={`group relative w-full aspect-video rounded-xl overflow-hidden border-2 transition-all flex-shrink-0 text-left 
-                    ${currentImage === item.url ? 'border-white' : 'border-zinc-800 opacity-80 hover:opacity-100 hover:border-zinc-500'}
+                    ${currentImage === item.url ? 'border-[var(--accent)]' : 'border-[var(--card-border)] opacity-80 hover:opacity-100 hover:border-zinc-400'}
                   `}
                 >
-                  <div className="w-full h-full bg-zinc-900 animate-pulse absolute inset-0 -z-10" />
+                  <div className="w-full h-full bg-[var(--card-bg)] animate-pulse absolute inset-0 -z-10" />
                   <img
                     src={item.url}
                     alt={item.prompt || item.name}
@@ -557,8 +558,8 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="py-6 border-t border-zinc-900 text-center mt-auto">
-        <p className="text-zinc-600 text-xs">© 2024 LuxVision AI Architect. Built using Google Gemini.</p>
+      <footer className="py-6 border-t border-[var(--card-border)] text-center mt-auto">
+        <p className="text-zinc-500 text-xs">© 2024 LuxVision AI Architect. Built using Google Gemini.</p>
       </footer>
     </div>
   );
