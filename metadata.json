@@ -1,0 +1,5 @@
+{
+  "name": "LuxVision AI Architect",
+  "description": "An ultra-realistic architectural visualization tool that uses Gemini 2.5 Flash Image to generate and edit luxury home designs with simple text prompts.",
+  "requestFramePermissions": []
+}
