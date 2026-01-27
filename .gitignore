@@ -1,3 +1,5 @@
 .env
 code.gs
 node_modules
+dist/
+assets/
