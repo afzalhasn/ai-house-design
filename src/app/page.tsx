@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import Header from '@/components/Header';
 import Button from '@/components/Button';
 import { generateImage, editImage, getPromptSuggestions } from '@/services/geminiService';
 import { uploadToDrive, setUploadUrl, fetchDriveFiles } from '@/services/driveService';
-import { publishToInstagram, publishToFacebook, generateAiCaption } from '@/services/socialService';
+import { publishToInstagram, generateAiCaption } from '@/services/socialService';
 import { ImageHistoryItem, LoadingState } from '@/types';
 
 const INITIAL_PROMPT = "Ultra-realistic modern luxury house exterior, contemporary architecture, clean sharp lines, large glass windows, natural stone and wood materials, warm ambient lighting, landscaped garden, green lawn, clear blue sky, cinematic wide-angle shot, front elevation view, symmetrical composition, realistic shadows, high detail, photorealistic, 8k quality. Camera: static, eye-level, wide lens. Environment: suburban residential area, empty surroundings, no people, no vehicles. Style: architectural visualization, realistic daylight";
@@ -95,15 +96,7 @@ export default function Home() {
   const handleSaveToGallery = async () => {
     if (!currentImage) return;
 
-    const newItem: ImageHistoryItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      url: currentImage,
-      prompt: prompt || "Saved Design",
-      timestamp: Date.now(),
-      aspectRatio: aspectRatio
-    };
-    setGallery(prev => [newItem, ...prev]);
-    setActiveTab('gallery');
+    let finalUrl = currentImage;
 
     if (saveToDriveEnabled) {
       let blob: Blob | null = null;
@@ -118,7 +111,11 @@ export default function Home() {
         blob = await response.blob();
         filename = `LuxVision_${Date.now()}.png`;
 
-        await uploadToDrive(blob, filename);
+        const driveUrl = await uploadToDrive(blob, filename);
+        if (driveUrl && driveUrl.startsWith('http')) {
+          finalUrl = driveUrl;
+        }
+
         if (activeTab === 'drive' || driveFiles.length > 0) {
           handleFetchDriveFiles();
         }
@@ -131,7 +128,10 @@ export default function Home() {
             setUploadUrl(url.trim());
             try {
               if (blob) {
-                await uploadToDrive(blob, filename);
+                const driveUrl = await uploadToDrive(blob, filename);
+                if (driveUrl && driveUrl.startsWith('http')) {
+                  finalUrl = driveUrl;
+                }
                 if (activeTab === 'drive' || driveFiles.length > 0) {
                   handleFetchDriveFiles();
                 }
@@ -148,6 +148,16 @@ export default function Home() {
         setLoadingState(LoadingState.IDLE);
       }
     }
+
+    const newItem: ImageHistoryItem = {
+      id: `gal_${Date.now()}`,
+      url: finalUrl,
+      prompt: prompt || "Saved Design",
+      timestamp: Date.now(),
+      aspectRatio: aspectRatio
+    };
+    setGallery(prev => [newItem, ...prev]);
+    setActiveTab('gallery');
   };
 
   const handleShare = async (platform: 'instagram' | 'facebook' | 'both') => {
@@ -164,12 +174,15 @@ export default function Home() {
       const processedUrls = await Promise.all(finalUrls.map(async (url) => {
         let targetUrl = url;
 
-        // 1. Convert Data URLs to public Drive links
+        // 1. Convert Data URLs to public Drive links (Required by Instagram)
         if (url.startsWith('data:')) {
+          console.log("[IG] Hosting local image on Drive for publishing...");
           const response = await fetch(url);
           const blob = await response.blob();
-          const filename = `LuxVision_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.png`;
+          const filename = `LuxVision_Share_${Date.now()}.png`;
           targetUrl = await uploadToDrive(blob, filename);
+        } else {
+          console.log("[IG] Using existing cloud URL for publishing:", url);
         }
 
         // 2. Fix Google Drive 'view' links to be direct 'uc' links
@@ -197,13 +210,14 @@ export default function Home() {
           caption: caption,
           thumbOffset: igContentType === 'REEL' ? thumbOffset : undefined
         });
-        if (!res.success) throw new Error(`Instagram: ${res.error}`);
-      }
 
-      if (platform === 'facebook' || platform === 'both') {
-        setIsPublishing(p => ({ ...p, fb: true }));
-        const res = await publishToFacebook(processedUrls[0], caption);
-        if (!res.success) throw new Error(`Facebook: ${res.error}`);
+        if (!res.success) throw new Error(`Instagram: ${res.error}`);
+
+        // Optimization: If we just uploaded a local image to Drive for sharing,
+        // update the main preview to use that Cloud URL now.
+        if (processedUrls.length === 1 && !currentImage?.startsWith('http')) {
+          setCurrentImage(processedUrls[0]);
+        }
       }
 
       alert("Successfully published!");
@@ -436,10 +450,12 @@ export default function Home() {
 
               {currentImage ? (
                 <>
-                  <img
+                  <Image
                     src={currentImage}
                     alt="Architectural Preview"
-                    className={`w-full h-full object-cover transition-opacity duration-700 ${loadingState !== LoadingState.IDLE ? 'opacity-40' : 'opacity-100'}`}
+                    fill
+                    unoptimized
+                    className={`object-cover transition-opacity duration-700 ${loadingState !== LoadingState.IDLE ? 'opacity-40' : 'opacity-100'}`}
                   />
                   <button
                     onClick={handleDownload}
@@ -665,10 +681,12 @@ export default function Home() {
                   `}
                 >
                   <div className="w-full h-full bg-[var(--card-bg)] animate-pulse absolute inset-0 -z-10" />
-                  <img
+                  <Image
                     src={item.url}
                     alt={item.prompt || item.name || "Gallery image"}
-                    className="w-full h-full object-cover transition-opacity duration-300"
+                    fill
+                    unoptimized
+                    className="object-cover transition-opacity duration-300"
                     loading="lazy"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
@@ -699,7 +717,7 @@ export default function Home() {
               <h3 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">Media Preview</h3>
               <div className="space-y-6">
                 <div className="aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl relative group">
-                  <img src={currentImage!} className="w-full h-full object-cover" alt="To Publish" />
+                  <Image src={currentImage!} fill unoptimized className="object-cover" alt="To Publish" />
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
                 </div>
 
@@ -720,7 +738,7 @@ export default function Home() {
                         }}
                         className={`w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedMediaUrls.includes(item.url) ? 'border-[var(--accent)] scale-90' : 'border-transparent opacity-60 hover:opacity-100'}`}
                       >
-                        <img src={item.url} className="w-full h-full object-cover" alt="Gallery item" />
+                        <Image src={item.url} fill unoptimized className="object-cover" alt="Gallery item" />
                       </button>
                     ))}
                   </div>

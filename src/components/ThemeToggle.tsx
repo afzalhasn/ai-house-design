@@ -9,7 +9,8 @@ export default function ThemeToggle() {
 
     // Prevent hydration mismatch
     useEffect(() => {
-        setMounted(true);
+        const raf = requestAnimationFrame(() => setMounted(true));
+        return () => cancelAnimationFrame(raf);
     }, []);
 
     if (!mounted) return (

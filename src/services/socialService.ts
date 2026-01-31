@@ -33,21 +33,6 @@ export const publishToInstagram = async (config: InstagramPublishConfig): Promis
     }
 };
 
-export const publishToFacebook = async (imageUrl: string, caption: string): Promise<SocialPublishResult> => {
-    try {
-        const response = await fetch('/api/social/publish', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ platform: 'facebook', imageUrl, caption })
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Facebook publishing failed");
-        return { success: true, platform: 'facebook', postId: data.postId };
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Facebook publishing failed";
-        return { success: false, platform: 'facebook', error: message };
-    }
-};
 
 export const generateAiCaption = async (base64Content: string, prompt: string): Promise<string> => {
     try {

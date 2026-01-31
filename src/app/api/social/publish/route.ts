@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
             while (!isReady && attempts < maxAttempts) {
                 attempts++;
                 // Check status
-                const statusRes = await fetch(`https://graph.facebook.com/v19.0/${creationId}?fields=status_code,status&access_token=${accessToken}`);
+                const statusRes = await fetch(`https://graph.instagram.com/v23.0/${creationId}?fields=status_code,status&access_token=${accessToken}`);
                 const statusData = await statusRes.json();
 
                 console.log(`[IG] Poll #${attempts}: ${statusData.status_code || 'PENDING'}`);
