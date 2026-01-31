@@ -49,3 +49,19 @@ export const publishToFacebook = async (imageUrl: string, caption: string): Prom
     }
 };
 
+export const generateAiCaption = async (base64Content: string, prompt: string): Promise<string> => {
+    try {
+        const response = await fetch('/api/social/generate-caption', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base64Content, prompt })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Failed to generate caption");
+        return data.caption;
+    } catch (error: unknown) {
+        console.error("Caption Generation Error:", error);
+        throw error;
+    }
+};
+

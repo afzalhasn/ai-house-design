@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Button from '@/components/Button';
 import { generateImage, editImage, getPromptSuggestions } from '@/services/geminiService';
 import { uploadToDrive, setUploadUrl, fetchDriveFiles } from '@/services/driveService';
-import { publishToInstagram, publishToFacebook } from '@/services/socialService';
+import { publishToInstagram, publishToFacebook, generateAiCaption } from '@/services/socialService';
 import { ImageHistoryItem, LoadingState } from '@/types';
 
 const INITIAL_PROMPT = "Ultra-realistic modern luxury house exterior, contemporary architecture, clean sharp lines, large glass windows, natural stone and wood materials, warm ambient lighting, landscaped garden, green lawn, clear blue sky, cinematic wide-angle shot, front elevation view, symmetrical composition, realistic shadows, high detail, photorealistic, 8k quality. Camera: static, eye-level, wide lens. Environment: suburban residential area, empty surroundings, no people, no vehicles. Style: architectural visualization, realistic daylight";
@@ -53,6 +53,7 @@ export default function Home() {
   const [selectedMediaUrls, setSelectedMediaUrls] = useState<string[]>([]);
   const [thumbOffset, setThumbOffset] = useState(0);
   const [isPublishing, setIsPublishing] = useState({ ig: false, fb: false });
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -161,13 +162,31 @@ export default function Home() {
     try {
       // Logic for public links if needed (Instagram requires public URLs)
       const processedUrls = await Promise.all(finalUrls.map(async (url) => {
+        let targetUrl = url;
+
+        // 1. Convert Data URLs to public Drive links
         if (url.startsWith('data:')) {
           const response = await fetch(url);
           const blob = await response.blob();
           const filename = `LuxVision_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.png`;
-          return await uploadToDrive(blob, filename);
+          targetUrl = await uploadToDrive(blob, filename);
         }
-        return url;
+
+        // 2. Fix Google Drive 'view' links to be direct 'uc' links
+        if (targetUrl.includes('drive.google.com') && targetUrl.includes('/file/d/')) {
+          const fileId = targetUrl.split('/file/d/')[1].split('/')[0];
+          targetUrl = `https://drive.google.com/uc?id=${fileId}&export=download`;
+        }
+
+        // 3. Add extension hint for Instagram's crawler on lh3/googleusercontent links
+        // Meta crawlers often fail if they don't see an image extension
+        if (targetUrl.includes('googleusercontent.com') && !targetUrl.includes('.')) {
+          targetUrl = `${targetUrl}?=.png`;
+        } else if (targetUrl.includes('drive.google.com') && !targetUrl.includes('&ext=')) {
+          targetUrl = `${targetUrl}&ext=.png`;
+        }
+
+        return targetUrl;
       }));
 
       if (platform === 'instagram' || platform === 'both') {
@@ -194,6 +213,33 @@ export default function Home() {
     } finally {
       setIsPublishing({ ig: false, fb: false });
       setLoadingState(LoadingState.IDLE);
+    }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (!currentImage || isGeneratingCaption) return;
+    setIsGeneratingCaption(true);
+    try {
+      let base64 = "";
+      if (currentImage.startsWith('data:')) {
+        base64 = currentImage.split(',')[1];
+      } else {
+        const res = await fetch(currentImage);
+        const blob = await res.blob();
+        base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      const caption = await generateAiCaption(base64, prompt);
+      setShareCaption(caption);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate AI caption.");
+    } finally {
+      setIsGeneratingCaption(false);
     }
   };
 
@@ -742,7 +788,25 @@ export default function Home() {
 
                 {/* Caption */}
                 <div className="space-y-3">
-                  <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Caption</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Caption</label>
+                    <button
+                      onClick={handleGenerateCaption}
+                      disabled={isGeneratingCaption}
+                      className="text-[10px] font-black uppercase tracking-widest text-[var(--accent)] hover:opacity-80 flex items-center gap-1.5 transition-all disabled:opacity-30"
+                    >
+                      {isGeneratingCaption ? (
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
+                          Writing...
+                        </span>
+                      ) : (
+                        <>
+                          <span>✨ Generate AI Caption</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <textarea
                     value={shareCaption}
                     onChange={(e) => setShareCaption(e.target.value)}

@@ -120,9 +120,11 @@ function getAppFolder() {
  * Maps a Google Drive File object to a clean data object
  */
 function mapFileToDto(file) {
+  const id = file.getId();
   return {
-    id: file.getId(),
-    url: getThumbnailUrl(file.getId()),
+    id: id,
+    url: getThumbnailUrl(id),
+    directUrl: getDirectUrl(id),
     name: file.getName(),
     timestamp: file.getDateCreated().getTime(),
     mimeType: file.getMimeType(),
@@ -131,11 +133,17 @@ function mapFileToDto(file) {
 }
 
 /**
- * Formats a direct-view URL for Drive images.
+ * Formats a direct-view URL for Drive images using lh3.
  */
 function getThumbnailUrl(id) {
-  // lh3 format is often more reliable for public embedding than drive-thumbnail
   return "https://lh3.googleusercontent.com/d/" + id;
+}
+
+/**
+ * Formats a legacy direct-download URL for Drive images.
+ */
+function getDirectUrl(id) {
+  return "https://drive.google.com/uc?export=download&id=" + id;
 }
 
 /**

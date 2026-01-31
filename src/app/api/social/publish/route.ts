@@ -7,7 +7,6 @@ export async function POST(req: NextRequest) {
 
         const igUserId = process.env.IG_USER_ID;
         const accessToken = process.env.ACCESS_TOKEN || process.env.FB_PAGE_TOKEN;
-        const fbPageId = process.env.FB_PAGE_ID;
 
         // Normalize Root URL to ensure it ends exactly with one slash
         let igRootUrl = process.env.IG_ROOT_URL || `https://graph.instagram.com/v23.0/${igUserId}/`;
@@ -30,6 +29,7 @@ export async function POST(req: NextRequest) {
                 // Step 1: Create Carousel Items
                 const itemIds = await Promise.all(mediaUrls.map(async (url: string) => {
                     const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi)$/) || url.includes('video');
+                    console.log(`[IG] Creating carousel item: ${url}`);
                     const res = await fetch(`${igRootUrl}media`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -40,11 +40,15 @@ export async function POST(req: NextRequest) {
                         })
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error?.message || "Failed to create carousel item");
+                    if (!res.ok) {
+                        console.error("[IG] Carousel item error:", data);
+                        throw new Error(data.error?.message || "Failed to create carousel item");
+                    }
                     return data.id;
                 }));
 
                 // Step 2: Create Carousel Header
+                console.log(`[IG] Linking carousel items: ${itemIds.join(',')}`);
                 const res = await fetch(`${igRootUrl}media`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -56,10 +60,14 @@ export async function POST(req: NextRequest) {
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error?.message || "Failed to create carousel container");
+                if (!res.ok) {
+                    console.error("[IG] Carousel container error:", data);
+                    throw new Error(data.error?.message || "Failed to create carousel container");
+                }
                 creationId = data.id;
 
             } else if (contentType === 'REEL' && mediaUrls?.[0]) {
+                console.log(`[IG] Creating Reel: ${mediaUrls[0]}`);
                 const res = await fetch(`${igRootUrl}media`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -73,12 +81,16 @@ export async function POST(req: NextRequest) {
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error?.message || "Failed to create Reels container");
+                if (!res.ok) {
+                    console.error("[IG] Reel container error:", data);
+                    throw new Error(data.error?.message || "Failed to create Reels container");
+                }
                 creationId = data.id;
 
             } else if (contentType === 'STORY' && mediaUrls?.[0]) {
                 const url = mediaUrls[0];
                 const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi)$/) || url.includes('video');
+                console.log(`[IG] Creating Story: ${url}`);
                 const res = await fetch(`${igRootUrl}media`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +101,10 @@ export async function POST(req: NextRequest) {
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error?.message || "Failed to create Story container");
+                if (!res.ok) {
+                    console.error("[IG] Story container error:", data);
+                    throw new Error(data.error?.message || "Failed to create Story container");
+                }
                 creationId = data.id;
 
             } else {
@@ -97,6 +112,7 @@ export async function POST(req: NextRequest) {
                 const url = mediaUrls?.[0] || imageUrl;
                 if (!url) throw new Error("No image URL provided for Instagram post");
 
+                console.log(`[IG] Creating Image Post: ${url}`);
                 const res = await fetch(`${igRootUrl}media`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -107,17 +123,44 @@ export async function POST(req: NextRequest) {
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error?.message || "Failed to create image container");
+                if (!res.ok) {
+                    console.error("[IG] Image container error:", data);
+                    throw new Error(data.error?.message || "Failed to create image container");
+                }
                 creationId = data.id;
             }
 
-            // Step 3: Publish the container
+            // Step 3: Wait for media processing to finish
             if (!creationId) throw new Error("Initialization failed: No creation ID generated");
 
-            if (contentType === 'REEL' || contentType === 'STORY') {
-                await new Promise(r => setTimeout(r, 3000));
+            console.log(`[IG] Waiting for processing: ${creationId}`);
+            let isReady = false;
+            let attempts = 0;
+            const maxAttempts = 15; // 30 seconds total
+
+            while (!isReady && attempts < maxAttempts) {
+                attempts++;
+                // Check status
+                const statusRes = await fetch(`https://graph.facebook.com/v19.0/${creationId}?fields=status_code,status&access_token=${accessToken}`);
+                const statusData = await statusRes.json();
+
+                console.log(`[IG] Poll #${attempts}: ${statusData.status_code || 'PENDING'}`);
+
+                if (statusData.status_code === 'FINISHED' || statusData.status_code === 'READY') {
+                    isReady = true;
+                } else if (statusData.status_code === 'ERROR') {
+                    throw new Error(`Media processing failed: ${statusData.error || 'Unknown error'}`);
+                } else {
+                    // Still processing
+                    await new Promise(r => setTimeout(r, 2000));
+                }
             }
 
+            if (!isReady) {
+                console.warn("[IG] Media processing timed out, attempting publish anyway...");
+            }
+
+            console.log(`[IG] Executing final publish for container: ${creationId}`);
             const publishRes = await fetch(`${igRootUrl}media_publish`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -129,35 +172,12 @@ export async function POST(req: NextRequest) {
 
             const publishData = await publishRes.json();
             if (!publishRes.ok) {
-                console.error("IG Publish Error:", publishData);
+                console.error("[IG] Publish execution error:", publishData);
                 throw new Error(publishData.error?.message || "Failed to publish Instagram post");
             }
 
+            console.log(`[IG] Successfully published! Post ID: ${publishData.id}`);
             return NextResponse.json({ status: "success", platform: "instagram", postId: publishData.id });
-
-        } else if (platform === 'facebook') {
-            if (!fbPageId) {
-                return NextResponse.json({ error: "Missing Facebook Page ID. Please set FB_PAGE_ID in your .env file." }, { status: 500 });
-            }
-
-            // Publish to Facebook Page
-            const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url: mediaUrls?.[0] || imageUrl,
-                    message: caption,
-                    access_token: accessToken
-                })
-            });
-
-            const fbData = await fbRes.json();
-            if (!fbRes.ok) {
-                console.error("FB Publish Error:", fbData);
-                throw new Error(fbData.error?.message || "Failed to publish Facebook post");
-            }
-
-            return NextResponse.json({ status: "success", platform: "facebook", postId: fbData.id });
         }
 
         return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });
