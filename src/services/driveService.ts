@@ -1,3 +1,5 @@
+import { ImageHistoryItem } from '@/types';
+
 interface DriveConfig {
     uploadUrl: string;
 }
@@ -13,7 +15,7 @@ try {
     if (envUrl) {
         driveConfig.uploadUrl = envUrl;
     }
-} catch (e) {
+} catch {
     console.warn("Environment variables not accessible");
 }
 
@@ -71,12 +73,13 @@ export const uploadToDrive = async (blob: Blob, filename: string): Promise<strin
         }
 
         return data.url || "Success";
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Upload Error:", error);
-        throw new Error(error.message || "Network error during upload");
+        const message = error instanceof Error ? error.message : "Network error during upload";
+        throw new Error(message);
     }
 };
-export const fetchDriveFiles = async (): Promise<any[]> => {
+export const fetchDriveFiles = async (): Promise<ImageHistoryItem[]> => {
     if (!driveConfig.uploadUrl) {
         throw new Error("MISSING_UPLOAD_URL");
     }
@@ -95,8 +98,9 @@ export const fetchDriveFiles = async (): Promise<any[]> => {
         }
 
         return data.files || [];
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Fetch Error:", error);
-        throw new Error(error.message || "Network error during fetch");
+        const message = error instanceof Error ? error.message : "Network error during fetch";
+        throw new Error(message);
     }
 };

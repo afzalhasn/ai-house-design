@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
         const { base64Content } = await req.json();
         const ai = new GoogleGenAI({ apiKey });
 
-        let parts: any[] = [];
+        const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
 
         if (base64Content) {
             parts.push({ inlineData: { mimeType: 'image/png', data: base64Content } });
@@ -38,8 +38,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             suggestions: Array.isArray(suggestions) ? suggestions : []
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Gemini Suggestions API Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : "Suggestions failed";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
             },
             config: {
                 imageConfig: {
-                    aspectRatio: aspectRatio || "16:9"
+                    aspectRatio: aspectRatio || "9:16"
                 }
             }
         });
@@ -35,8 +35,9 @@ export async function POST(req: NextRequest) {
         }
 
         throw new Error("No image data found in response");
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Gemini Generation API Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : "Generation failed";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

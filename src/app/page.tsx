@@ -5,11 +5,17 @@ import Header from '@/components/Header';
 import Button from '@/components/Button';
 import { generateImage, editImage, getPromptSuggestions } from '@/services/geminiService';
 import { uploadToDrive, setUploadUrl, fetchDriveFiles } from '@/services/driveService';
+import { publishToInstagram, publishToFacebook } from '@/services/socialService';
 import { ImageHistoryItem, LoadingState } from '@/types';
 
 const INITIAL_PROMPT = "Ultra-realistic modern luxury house exterior, contemporary architecture, clean sharp lines, large glass windows, natural stone and wood materials, warm ambient lighting, landscaped garden, green lawn, clear blue sky, cinematic wide-angle shot, front elevation view, symmetrical composition, realistic shadows, high detail, photorealistic, 8k quality. Camera: static, eye-level, wide lens. Environment: suburban residential area, empty surroundings, no people, no vehicles. Style: architectural visualization, realistic daylight";
 
-const ASPECT_RATIOS = ["16:9", "4:3", "1:1", "9:16"];
+const ASPECT_RATIO_OPTIONS = [
+  { label: "Wide (16:9)", value: "16:9", description: "Best for Facebook/Desktop" },
+  { label: "Square (1:1)", value: "1:1", description: "Best for Instagram Feed" },
+  { label: "Portrait (4:5)", value: "4:5", description: "Best for Instagram Posts" },
+  { label: "Story (9:16)", value: "9:16", description: "Best for Stories/Reels" }
+];
 
 const ARCHITECTURAL_KEYWORDS = [
   'Modern', 'Minimalist', 'Industrial', 'Brutalist', 'Victorian', 'Gothic', 'Art Deco', 'Scandinavian',
@@ -28,7 +34,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [loadingState, setLoadingState] = useState<LoadingState>(LoadingState.IDLE);
   const [error, setError] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<string>("16:9");
+  const [aspectRatio, setAspectRatio] = useState<string>("9:16");
   const [activeTab, setActiveTab] = useState<'history' | 'gallery' | 'drive'>('history');
 
   // Suggestion States
@@ -39,8 +45,14 @@ export default function Home() {
 
   // Drive State
   const [saveToDriveEnabled, setSaveToDriveEnabled] = useState(false);
-  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [driveFiles, setDriveFiles] = useState<ImageHistoryItem[]>([]);
   const [isLoadingDrive, setIsLoadingDrive] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareCaption, setShareCaption] = useState('');
+  const [igContentType, setIgContentType] = useState<'IMAGE' | 'CAROUSEL' | 'REEL' | 'STORY'>('IMAGE');
+  const [selectedMediaUrls, setSelectedMediaUrls] = useState<string[]>([]);
+  const [thumbOffset, setThumbOffset] = useState(0);
+  const [isPublishing, setIsPublishing] = useState({ ig: false, fb: false });
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +61,12 @@ export default function Home() {
     const init = async () => {
       try {
         setLoadingState(LoadingState.GENERATING);
-        const url = await generateImage(INITIAL_PROMPT, "16:9");
+        const url = await generateImage(INITIAL_PROMPT, "9:16");
         setCurrentImage(url);
-        addToHistory(url, "Initial Generation", "16:9");
+        addToHistory(url, "Initial Generation", "9:16");
         setLoadingState(LoadingState.IDLE);
-      } catch (err: any) {
-        let errorMsg = err.message || "Failed to generate initial image.";
+      } catch (err: unknown) {
+        let errorMsg = err instanceof Error ? err.message : "Failed to generate initial image.";
 
         // Handle specific Leaked API Key error
         if (errorMsg.includes("reported as leaked") || (typeof err === 'string' && err.includes("reported as leaked"))) {
@@ -109,9 +121,10 @@ export default function Home() {
         if (activeTab === 'drive' || driveFiles.length > 0) {
           handleFetchDriveFiles();
         }
-      } catch (err: any) {
-        console.error("Drive upload failed:", err);
-        if (err.message === "MISSING_UPLOAD_URL") {
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error("Drive upload failed:", error);
+        if (error.message === "MISSING_UPLOAD_URL") {
           const url = window.prompt("Setup Required: Please enter your Google Apps Script Web App URL.");
           if (url && url.trim().length > 0) {
             setUploadUrl(url.trim());
@@ -122,18 +135,68 @@ export default function Home() {
                   handleFetchDriveFiles();
                 }
               }
-            } catch (retryErr: any) {
-              setError(`Drive upload failed (Retry): ${retryErr.message}`);
+            } catch (retryErr: unknown) {
+              const retryError = retryErr as Error;
+              setError(`Drive upload failed (Retry): ${retryError.message}`);
             }
           }
         } else {
-          setError(`Saved to Gallery, but Drive upload failed: ${err.message}`);
+          setError(`Saved to Gallery, but Drive upload failed: ${error.message}`);
         }
       } finally {
         setLoadingState(LoadingState.IDLE);
       }
     }
   };
+
+  const handleShare = async (platform: 'instagram' | 'facebook' | 'both') => {
+    if (!currentImage) return;
+
+    let finalUrls = [...selectedMediaUrls];
+    if (finalUrls.length === 0) finalUrls = [currentImage];
+
+    setLoadingState(LoadingState.PUBLISHING);
+    const caption = shareCaption || prompt || "Magnificent architectural design created with LuxVision AI.";
+
+    try {
+      // Logic for public links if needed (Instagram requires public URLs)
+      const processedUrls = await Promise.all(finalUrls.map(async (url) => {
+        if (url.startsWith('data:')) {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const filename = `LuxVision_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.png`;
+          return await uploadToDrive(blob, filename);
+        }
+        return url;
+      }));
+
+      if (platform === 'instagram' || platform === 'both') {
+        setIsPublishing(p => ({ ...p, ig: true }));
+        const res = await publishToInstagram({
+          contentType: igContentType,
+          mediaUrls: processedUrls,
+          caption: caption,
+          thumbOffset: igContentType === 'REEL' ? thumbOffset : undefined
+        });
+        if (!res.success) throw new Error(`Instagram: ${res.error}`);
+      }
+
+      if (platform === 'facebook' || platform === 'both') {
+        setIsPublishing(p => ({ ...p, fb: true }));
+        const res = await publishToFacebook(processedUrls[0], caption);
+        if (!res.success) throw new Error(`Facebook: ${res.error}`);
+      }
+
+      alert("Successfully published!");
+      setIsShareModalOpen(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsPublishing({ ig: false, fb: false });
+      setLoadingState(LoadingState.IDLE);
+    }
+  };
+
 
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,13 +206,14 @@ export default function Home() {
       setLoadingState(LoadingState.EDITING);
       setError(null);
       setAutocompleteSuggestions([]);
-      const editedUrl = await editImage(currentImage, prompt, aspectRatio);
+      const framingPrompt = `${prompt} [Framing: optimized for ${aspectRatio} aspect ratio, social media ${ASPECT_RATIO_OPTIONS.find(o => o.value === aspectRatio)?.label || ''} composition]`;
+      const editedUrl = await editImage(currentImage, framingPrompt, aspectRatio);
       setCurrentImage(editedUrl);
       addToHistory(editedUrl, prompt, aspectRatio);
       setPrompt('');
       setLoadingState(LoadingState.IDLE);
-    } catch (err: any) {
-      setError(err.message || "An error occurred during editing.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An error occurred during editing.");
       setLoadingState(LoadingState.ERROR);
     }
   };
@@ -163,17 +227,18 @@ export default function Home() {
     try {
       setLoadingState(LoadingState.GENERATING);
       setError(null);
-      const url = await generateImage(INITIAL_PROMPT, newRatio);
+      const framingPrompt = `${INITIAL_PROMPT} [Framing: optimized for ${newRatio} aspect ratio, social media ${ASPECT_RATIO_OPTIONS.find(o => o.value === newRatio)?.label || ''} composition]`;
+      const url = await generateImage(framingPrompt, newRatio);
       setCurrentImage(url);
       addToHistory(url, `Base Reset (${newRatio})`, newRatio);
       setLoadingState(LoadingState.IDLE);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate image.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate image.");
       setLoadingState(LoadingState.ERROR);
     }
   };
 
-  const restoreFromItem = (item: any) => {
+  const restoreFromItem = (item: ImageHistoryItem) => {
     setCurrentImage(item.url);
     if (item.aspectRatio) setAspectRatio(item.aspectRatio);
     if (item.prompt) setPrompt(item.prompt);
@@ -189,8 +254,8 @@ export default function Home() {
       setCurrentImage(url);
       addToHistory(url, "Reset to initial", aspectRatio);
       setLoadingState(LoadingState.IDLE);
-    } catch (err: any) {
-      setError(err.message || "Failed to reset image.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to reset image.");
       setLoadingState(LoadingState.ERROR);
     }
   };
@@ -208,7 +273,7 @@ export default function Home() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       const link = document.createElement('a');
       link.href = currentImage;
       link.download = `luxvision-render.png`;
@@ -249,8 +314,7 @@ export default function Home() {
       const suggestions = await getPromptSuggestions(currentImage);
       setAiSuggestions(suggestions);
       setIsAiSuggestionsOpen(true);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError("Could not generate suggestions.");
     } finally {
       setIsLoadingSuggestions(false);
@@ -269,9 +333,10 @@ export default function Home() {
     try {
       const files = await fetchDriveFiles();
       setDriveFiles(files);
-    } catch (err: any) {
-      console.error(err);
-      if (err.message === "MISSING_UPLOAD_URL") {
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(error);
+      if (error.message === "MISSING_UPLOAD_URL") {
         const url = window.prompt("Enter Google Apps Script URL.");
         if (url && url.trim().length > 0) {
           setUploadUrl(url.trim());
@@ -279,7 +344,7 @@ export default function Home() {
           setDriveFiles(files);
         }
       } else {
-        setError(`Failed drive fetch: ${err.message}`);
+        setError(`Failed drive fetch: ${error.message}`);
       }
     } finally {
       setIsLoadingDrive(false);
@@ -290,13 +355,14 @@ export default function Home() {
     if (activeTab === 'drive' && driveFiles.length === 0) {
       handleFetchDriveFiles();
     }
-  }, [activeTab]);
+  }, [activeTab, driveFiles.length]);
 
   const getAspectRatioClass = (ratio: string) => {
     switch (ratio) {
       case '16:9': return 'aspect-video';
       case '4:3': return 'aspect-[4/3]';
       case '1:1': return 'aspect-square';
+      case '4:5': return 'aspect-[4/5]';
       case '9:16': return 'aspect-[9/16]';
       default: return 'aspect-video';
     }
@@ -314,9 +380,10 @@ export default function Home() {
               {loadingState !== LoadingState.IDLE && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
                   <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4"></div>
-                  <p className="text-lg font-medium tracking-wide">
+                  <p className="text-lg font-medium tracking-wide text-white">
                     {loadingState === LoadingState.GENERATING ? "Generating..." :
-                      loadingState === LoadingState.SAVING ? "Uploading to Drive..." : "Processing..."}
+                      loadingState === LoadingState.SAVING ? "Uploading to Drive..." :
+                        loadingState === LoadingState.PUBLISHING ? "Publishing to Social..." : "Processing..."}
                   </p>
                 </div>
               )}
@@ -335,6 +402,18 @@ export default function Home() {
                   >
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShareCaption(prompt || "");
+                      setIsShareModalOpen(true);
+                    }}
+                    className="absolute top-4 left-4 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-xl"
+                    title="Share to Social"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                     </svg>
                   </button>
                 </>
@@ -464,16 +543,18 @@ export default function Home() {
               <div>
                 <label className="text-xs font-semibold text-zinc-500 mb-2 block uppercase">Aspect Ratio</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {ASPECT_RATIOS.map((ratio) => (
+                  {ASPECT_RATIO_OPTIONS.map((option) => (
                     <button
-                      key={ratio}
-                      onClick={() => handleAspectRatioChange(ratio)}
-                      className={`px-2 py-2 text-xs font-medium rounded-lg border transition-all ${aspectRatio === ratio
+                      key={option.value}
+                      onClick={() => handleAspectRatioChange(option.value)}
+                      title={option.description}
+                      className={`px-2 py-3 text-[10px] font-bold uppercase tracking-tighter rounded-lg border transition-all flex flex-col items-center justify-center gap-1 ${aspectRatio === option.value
                         ? 'bg-[var(--foreground)] text-[var(--background)] border-[var(--foreground)]'
                         : 'bg-[var(--card-bg)] text-zinc-500 border-[var(--card-border)] hover:border-[var(--accent)]'
                         }`}
                     >
-                      {ratio}
+                      <span>{option.label.split(' ')[0]}</span>
+                      <span className="opacity-60 text-[8px]">{option.value}</span>
                     </button>
                   ))}
                 </div>
@@ -540,7 +621,7 @@ export default function Home() {
                   <div className="w-full h-full bg-[var(--card-bg)] animate-pulse absolute inset-0 -z-10" />
                   <img
                     src={item.url}
-                    alt={item.prompt || item.name}
+                    alt={item.prompt || item.name || "Gallery image"}
                     className="w-full h-full object-cover transition-opacity duration-300"
                     loading="lazy"
                     onError={(e) => {
@@ -561,6 +642,133 @@ export default function Home() {
       <footer className="py-6 border-t border-[var(--card-border)] text-center mt-auto">
         <p className="text-zinc-500 text-xs">© 2024 LuxVision AI Architect. Built using Google Gemini.</p>
       </footer>
+
+      {/* Share Modal */}
+      {isShareModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl transition-all">
+          <div className="bg-[var(--background)] border border-[var(--card-border)] rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-300 flex flex-col md:flex-row">
+
+            {/* Left: Preview & Selection */}
+            <div className="md:w-1/2 p-8 bg-[var(--card-bg)]/50 border-r border-[var(--card-border)] overflow-y-auto">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">Media Preview</h3>
+              <div className="space-y-6">
+                <div className="aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl relative group">
+                  <img src={currentImage!} className="w-full h-full object-cover" alt="To Publish" />
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold uppercase text-zinc-400">Add to Carousel (Optional)</label>
+                    <span className="text-[10px] text-[var(--accent)] font-bold">{selectedMediaUrls.length} selected</span>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {gallery.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedMediaUrls(prev =>
+                            prev.includes(item.url) ? prev.filter(u => u !== item.url) : [...prev, item.url]
+                          );
+                          if (igContentType !== 'CAROUSEL') setIgContentType('CAROUSEL');
+                        }}
+                        className={`w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedMediaUrls.includes(item.url) ? 'border-[var(--accent)] scale-90' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      >
+                        <img src={item.url} className="w-full h-full object-cover" alt="Gallery item" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Options */}
+            <div className="md:w-1/2 p-8 overflow-y-auto">
+              <div className="flex justify-between items-center mb-10">
+                <h3 className="text-2xl font-black tracking-tight">Post to Instagram</h3>
+                <button onClick={() => setIsShareModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                {/* Format Selection */}
+                <div className="space-y-4">
+                  <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Select Post Format</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { id: 'IMAGE', icon: '📸', label: 'Feed Post', desc: 'Standard image post' },
+                      { id: 'CAROUSEL', icon: '🎞️', label: 'Carousel', desc: 'Multiple items' },
+                      { id: 'REEL', icon: '🎬', label: 'Reel', desc: 'High reach video' },
+                      { id: 'STORY', icon: '⚡', label: 'Story', desc: '24hr visibility' }
+                    ].map(type => (
+                      <button
+                        key={type.id}
+                        onClick={() => setIgContentType(type.id as 'IMAGE' | 'CAROUSEL' | 'REEL' | 'STORY')}
+                        className={`p-4 rounded-3xl border-2 text-left transition-all ${igContentType === type.id
+                          ? 'border-[var(--accent)] bg-[var(--accent)]/5'
+                          : 'border-[var(--card-border)] hover:border-zinc-400 opacity-60'}`}
+                      >
+                        <span className="text-2xl mb-2 block">{type.icon}</span>
+                        <div className="font-bold text-sm">{type.label}</div>
+                        <div className="text-[10px] text-zinc-500">{type.desc}</div>
+                        {((aspectRatio === '9:16' && (type.id === 'REEL' || type.id === 'STORY')) ||
+                          (aspectRatio === '1:1' && type.id === 'IMAGE')) && (
+                            <span className="inline-block mt-2 px-2 py-0.5 bg-[var(--accent)] text-white text-[8px] font-black rounded-full uppercase">Recommended</span>
+                          )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reel Specifics */}
+                {igContentType === 'REEL' && (
+                  <div className="p-6 bg-zinc-100 dark:bg-zinc-900 rounded-[2rem] space-y-4 animate-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-black uppercase text-zinc-500">Thumb Offset (ms)</label>
+                      <span className="text-sm font-mono font-bold">{thumbOffset}ms</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="5000"
+                      step="100"
+                      value={thumbOffset}
+                      onChange={(e) => setThumbOffset(parseInt(e.target.value))}
+                      className="w-full accent-[var(--accent)]"
+                    />
+                  </div>
+                )}
+
+                {/* Caption */}
+                <div className="space-y-3">
+                  <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Caption</label>
+                  <textarea
+                    value={shareCaption}
+                    onChange={(e) => setShareCaption(e.target.value)}
+                    className="w-full bg-[var(--card-bg)] border-2 border-[var(--card-border)] rounded-3xl p-5 text-sm min-h-[120px] outline-none focus:border-[var(--accent)] transition-all resize-none shadow-inner"
+                    placeholder="Capture the vibe of this design..."
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-3 pt-4">
+                  <button
+                    onClick={() => handleShare('instagram')}
+                    disabled={loadingState === LoadingState.PUBLISHING}
+                    className="group flex items-center justify-center gap-4 py-5 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 rounded-3xl font-black text-white transition-all shadow-xl hover:shadow-2xl active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <span>{isPublishing.ig ? "Processing..." : `Share as ${igContentType.charAt(0) + igContentType.slice(1).toLowerCase()}`}</span>
+                    <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                  </button>
+                  <p className="text-[10px] text-center text-zinc-500/60 uppercase font-black tracking-widest">Powered by LuxVision Social Engine</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
