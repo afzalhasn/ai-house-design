@@ -28,6 +28,11 @@ const ARCHITECTURAL_KEYWORDS = [
   'Cinematic', 'Photorealistic', '8k', 'Volumetric Lighting', 'Atmospheric'
 ];
 
+const SIGNATURE_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#FF9F1C', '#2EC4B6', '#E71D36',
+  '#3b82f6', '#8A2BE2', '#00FF7F', '#FF1493', '#0070f3'
+];
+
 export default function Home() {
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [history, setHistory] = useState<ImageHistoryItem[]>([]);
@@ -60,6 +65,11 @@ export default function Home() {
 
   // Initial load
   useEffect(() => {
+    // 1. Set random signature color
+    const randomColor = SIGNATURE_COLORS[Math.floor(Math.random() * SIGNATURE_COLORS.length)];
+    document.documentElement.style.setProperty('--accent', randomColor);
+
+    // 2. Initialize first image
     const init = async () => {
       try {
         setLoadingState(LoadingState.GENERATING);
@@ -480,11 +490,14 @@ export default function Home() {
                   </button>
                 </>
               ) : (
-                <div className="text-zinc-600 flex flex-col items-center">
-                  <svg className="w-16 h-16 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p>Initializing LuxVision Architect...</p>
+                <div className="text-zinc-500 flex flex-col items-center justify-center p-12 text-center">
+                  <div className="w-16 h-16 mb-4 relative">
+                    <div className="absolute inset-0 bg-[var(--accent)] opacity-20 blur-2xl rounded-full animate-pulse" />
+                    <svg className="w-full h-full relative z-10 opacity-20 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm tracking-widest uppercase font-black opacity-40">Initializing LuxVision Architect...</p>
                 </div>
               )}
             </div>

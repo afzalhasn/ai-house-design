@@ -15,7 +15,7 @@ const Button: React.FC<ButtonProps> = ({
     const baseStyles = "px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
 
     const variants = {
-        primary: "bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 shadow-lg",
+        primary: "bg-[var(--accent)] text-white hover:opacity-90 shadow-lg",
         secondary: "bg-[var(--card-bg)] text-[var(--foreground)] hover:bg-[var(--card-border)] border border-[var(--card-border)]",
         danger: "bg-red-600 text-white hover:bg-red-700",
         ghost: "bg-transparent text-zinc-500 hover:text-[var(--foreground)] hover:bg-[var(--card-bg)]"
